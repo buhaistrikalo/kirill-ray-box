@@ -86,40 +86,46 @@ export class GoogleTranslateProvider implements TranslationProvider {
       TRANSLATION_TIMEOUT_MS,
     );
 
-    let response: Response;
     try {
-      response = await this.fetcher(url.toString(), {
-        headers: { Accept: "application/json" },
-        signal: controller.signal,
-      });
-    } catch {
-      if (controller.signal.aborted) {
-        throw new Error("Translation service request timed out");
+      let response: Response;
+      try {
+        response = await this.fetcher(url.toString(), {
+          headers: { Accept: "application/json" },
+          signal: controller.signal,
+        });
+      } catch {
+        if (controller.signal.aborted) {
+          throw new Error("Translation service request timed out");
+        }
+
+        throw new Error("Unable to reach translation service");
       }
 
-      throw new Error("Unable to reach translation service");
+      if (!response.ok) {
+        throw new Error(`Translation service returned HTTP ${response.status}`);
+      }
+
+      let payload: unknown;
+      try {
+        payload = await response.json();
+      } catch {
+        if (controller.signal.aborted) {
+          throw new Error("Translation service request timed out");
+        }
+
+        throw new Error("Translation service returned invalid JSON");
+      }
+
+      const parsed = parseGoogleTranslateResponse(payload);
+
+      return {
+        text: parsed.text,
+        sourceLanguage: parsed.detectedLanguage ?? localSourceLanguage,
+        targetLanguage,
+        provider: "google-web",
+      };
     } finally {
       clearTimeout(timeout);
     }
-
-    if (!response.ok) {
-      throw new Error(`Translation service returned HTTP ${response.status}`);
-    }
-
-    let payload: unknown;
-    try {
-      payload = await response.json();
-    } catch {
-      throw new Error("Translation service returned invalid JSON");
-    }
-
-    const parsed = parseGoogleTranslateResponse(payload);
-
-    return {
-      text: parsed.text,
-      sourceLanguage: parsed.detectedLanguage ?? localSourceLanguage,
-      targetLanguage,
-      provider: "google-web",
-    };
   }
 }

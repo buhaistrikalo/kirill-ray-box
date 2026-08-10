@@ -13,6 +13,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { GoogleTranslateProvider } from "../tools/translate/provider";
 import { TranslationService } from "../tools/translate/service";
+import { formatResult } from "../tools/translate/markdown";
 import type { TranslationResult } from "../tools/translate/types";
 
 type TranslateFormValues = {
@@ -21,26 +22,6 @@ type TranslateFormValues = {
 
 function getErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : "Translation failed";
-}
-
-function asMarkdownText(text: string): string {
-  return text.replaceAll("```", "``\\`");
-}
-
-function formatResult(result: TranslationResult, sourceText: string): string {
-  const direction = `${result.sourceLanguage.toUpperCase()} → ${result.targetLanguage.toUpperCase()}`;
-
-  return [
-    `## ${direction}`,
-    "",
-    asMarkdownText(result.text),
-    "",
-    "---",
-    "",
-    "**Source**",
-    "",
-    asMarkdownText(sourceText),
-  ].join("\n");
 }
 
 export default function TranslateCommand() {

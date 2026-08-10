@@ -4,7 +4,7 @@ Thanks for helping improve Ray Tools.
 
 ## Development setup
 
-1. Install Node.js 22 or newer.
+1. Install Node.js 22.22.2 or newer.
 2. Install dependencies with `npm ci`.
 3. Run the complete local quality gate:
 

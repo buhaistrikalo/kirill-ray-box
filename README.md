@@ -36,6 +36,8 @@ pnpm install --frozen-lockfile
 pnpm run check
 ```
 
+`pnpm-lock.yaml` is the source of truth for dependency installation. The repository also keeps `package-lock.json` because the current Raycast CLI validates its presence during `ray lint`; contributors should still use pnpm for installs and updates.
+
 Run the extension in Raycast while developing:
 
 ```bash

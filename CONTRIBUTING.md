@@ -15,6 +15,8 @@ Thanks for helping improve Ray Tools.
 
 5. Run `pnpm run dev` to load the extension in Raycast while developing.
 
+`pnpm-lock.yaml` is authoritative for installs. Keep `package-lock.json` in sync when dependency versions change because Raycast's lint command currently requires that file to exist.
+
 ## Project conventions
 
 - Keep tools independent under `src/tools/<tool-name>`.

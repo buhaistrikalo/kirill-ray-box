@@ -1,0 +1,12 @@
+## What changed?
+
+<!-- Describe the change and why it is needed. -->
+
+## Verification
+
+- [ ] `pnpm run check`
+- [ ] No credentials, private keys, personal data, or confidential samples were added
+
+## Notes for reviewers
+
+<!-- Mention trade-offs, follow-up work, or anything that needs special attention. -->

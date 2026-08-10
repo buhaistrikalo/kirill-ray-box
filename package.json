@@ -5,9 +5,16 @@
   "description": "A focused set of independent tools for everyday work",
   "icon": "icon.png",
   "author": "kirill",
-  "categories": ["Productivity"],
+  "categories": [
+    "Productivity"
+  ],
   "license": "MIT",
-  "platforms": ["macOS"],
+  "engines": {
+    "node": ">=22.22.2"
+  },
+  "platforms": [
+    "macOS"
+  ],
   "commands": [
     {
       "name": "translate",

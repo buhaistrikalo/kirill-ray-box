@@ -26,7 +26,7 @@ Do not send confidential or regulated data through the current public provider.
 
 - macOS
 - [Raycast](https://www.raycast.com/)
-- Node.js 22+ and npm for development
+- Node.js 22.22.2+ and npm for development
 
 ## Local development
 

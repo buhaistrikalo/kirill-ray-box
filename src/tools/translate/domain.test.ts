@@ -11,6 +11,15 @@ describe("translation language direction", () => {
     expect(detectLanguage("Hello, how are you?")).toBe("en");
   });
 
+  it("uses the first letter to break mixed-language ties", () => {
+    expect(detectLanguage("БA")).toBe("ru");
+    expect(detectLanguage("AБ")).toBe("en");
+  });
+
+  it("defaults to English when there are no supported letters", () => {
+    expect(detectLanguage("123 !?")).toBe("en");
+  });
+
   it("switches Russian to English and English to Russian", () => {
     expect(getTargetLanguage("ru")).toBe("en");
     expect(getTargetLanguage("en")).toBe("ru");

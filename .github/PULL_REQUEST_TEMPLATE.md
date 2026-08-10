@@ -4,7 +4,7 @@
 
 ## Verification
 
-- [ ] `pnpm run check`
+- [ ] `npm run check`
 - [ ] No credentials, private keys, personal data, or confidential samples were added
 
 ## Notes for reviewers

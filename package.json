@@ -7,7 +7,6 @@
   "author": "kirill",
   "categories": ["Productivity"],
   "license": "MIT",
-  "packageManager": "pnpm@10.28.1",
   "platforms": ["macOS"],
   "commands": [
     {
@@ -37,7 +36,7 @@
     "lint": "ray lint",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "check": "pnpm run test && pnpm run typecheck && pnpm run lint && pnpm run build",
+    "check": "npm run test && npm run typecheck && npm run lint && npm run build",
     "publish": "ray publish"
   }
 }

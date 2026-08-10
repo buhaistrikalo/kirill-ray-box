@@ -26,22 +26,19 @@ Do not send confidential or regulated data through the current public provider.
 
 - macOS
 - [Raycast](https://www.raycast.com/)
-- Node.js 22+ and pnpm 10+ for development
+- Node.js 22+ and npm for development
 
 ## Local development
 
 ```bash
-corepack enable
-pnpm install --frozen-lockfile
-pnpm run check
+npm ci
+npm run check
 ```
-
-`pnpm-lock.yaml` is the source of truth for dependency installation. The repository also keeps `package-lock.json` because the current Raycast CLI validates its presence during `ray lint`; contributors should still use pnpm for installs and updates.
 
 Run the extension in Raycast while developing:
 
 ```bash
-pnpm run dev
+npm run dev
 ```
 
 The `check` script runs the complete local quality gate:

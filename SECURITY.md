@@ -19,6 +19,6 @@ Please allow reasonable time for investigation and a fix before public disclosur
 
 ## Secret handling
 
-The current extension does not require API keys or environment variables. Translation text is sent to Google's public endpoint, so confidential data should not be submitted through the current provider.
+The current extension does not require API keys or environment variables. Translation text is sent to Google's public endpoint and Russian proofreading text is sent to LanguageTool's public API, so confidential data should not be submitted through either provider.
 
 If a credential is ever committed accidentally, revoke or rotate it first. Removing the file does not invalidate a secret that is already present in Git history.

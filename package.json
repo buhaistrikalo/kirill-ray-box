@@ -22,6 +22,13 @@
       "subtitle": "RU ↔ EN",
       "description": "Translate selected or typed text between Russian and English",
       "mode": "view"
+    },
+    {
+      "name": "proofread-russian",
+      "title": "Proofread Russian Text",
+      "subtitle": "Spelling & Punctuation",
+      "description": "Check Russian spelling and punctuation in selected or typed text",
+      "mode": "view"
     }
   ],
   "dependencies": {
@@ -31,9 +38,10 @@
     "@raycast/eslint-config": "^2.2.0",
     "@types/node": "^26.1.2",
     "@types/react": "^19.0.10",
-    "eslint": "^10.8.0",
+    "@typescript/native": "npm:typescript@^7.0.2",
+    "eslint": "^10.8.1",
     "prettier": "^3.5.3",
-    "typescript": "^5.8.2",
+    "typescript": "npm:@typescript/typescript6@^6.0.2",
     "vitest": "^4.0.8"
   },
   "scripts": {

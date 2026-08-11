@@ -13,14 +13,19 @@ Translate selected text, clipboard contents, or text entered directly in Raycast
 - `ru → en`
 - `en → ru`
 
+### Proofread Russian Text
+
+Check Russian spelling and punctuation in selected text, clipboard contents, or text entered directly in Raycast. The command shows each suggestion and a corrected version that can be copied or pasted.
+
 ## Privacy and configuration
 
 - Translation text is sent over HTTPS to Google's public translation endpoint.
+- Russian proofreading text is sent over HTTPS to LanguageTool's public API.
 - The extension does not persist translation history or store user text locally.
-- The current provider does not require an API key or any environment variables.
+- The current providers do not require an API key or any environment variables.
 - Do not put credentials into source code or a `.env` file and assume they are hidden. A Raycast extension is client-side code, so a secret bundled into it can be extracted. An authenticated provider should use Raycast keychain-backed preferences or a server-side proxy instead.
 
-Do not send confidential or regulated data through the current public provider.
+Do not send confidential or regulated data through the current public providers.
 
 ## Requirements
 
@@ -63,6 +68,12 @@ Shared infrastructure belongs in `src/shared`. New tools should add their own di
 The first version uses Google's public translation endpoint with automatic source-language detection. The endpoint is isolated behind `TranslationProvider`, so it can be replaced with an authenticated or self-hosted provider later without changing the user flow.
 
 The public endpoint may be rate-limited or change without notice. It is intentionally treated as a replaceable provider rather than a guaranteed production API.
+
+## Russian proofreading backend
+
+The Russian proofreading command uses LanguageTool's public `/v2/check` endpoint with the `ru-RU` language. It checks spelling, punctuation, grammar, and style rules, then applies the first suggestion for each non-overlapping issue to create the copyable corrected text. A small local Russian rule supplements the provider for context-sensitive spelling such as `не интересно` → `неинтересно` when there is no explicit negation or contrast.
+
+The public endpoint may be rate-limited or change without notice. Text sent to it should not contain confidential or regulated data.
 
 ## Contributing
 

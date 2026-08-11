@@ -15,9 +15,13 @@ declare type Preferences = ExtensionPreferences
 declare namespace Preferences {
   /** Preferences accessible in the `translate` command */
   export type Translate = ExtensionPreferences & {}
+  /** Preferences accessible in the `proofread-russian` command */
+  export type ProofreadRussian = ExtensionPreferences & {}
 }
 
 declare namespace Arguments {
   /** Arguments passed to the `translate` command */
   export type Translate = {}
+  /** Arguments passed to the `proofread-russian` command */
+  export type ProofreadRussian = {}
 }

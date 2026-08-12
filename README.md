@@ -17,11 +17,17 @@ Translate selected text, clipboard contents, or text entered directly in Raycast
 
 Check Russian spelling and punctuation in selected text, clipboard contents, or text entered directly in Raycast. The command shows each suggestion and a corrected version that can be copied or pasted.
 
+### Ping
+
+Keep a menu-bar network status visible with a background check every 60 seconds. Ping checks the macOS default gateway, a Google HTTP 204 connectivity endpoint, a configurable HTTPS remote endpoint (default: `https://example.com`), and detectable macOS VPN activity. Its diagnosis is deliberately layered: it distinguishes likely local-network, ISP/internet-path, remote-server, and VPN problems, while showing `Inconclusive` when the probes do not prove a layer.
+
 ## Privacy and configuration
 
 - Translation text is sent over HTTPS to Google's public translation endpoint.
 - Russian proofreading text is sent over HTTPS to LanguageTool's public API.
+- Ping sends only connectivity requests: one ICMP echo to the local default gateway and HTTPS requests to the configured public endpoints. It does not send user text, credentials, or request data to those endpoints.
 - The extension does not persist translation history or store user text locally.
+- Ping keeps its current result in Raycast's running menu-bar command only; it does not persist the local gateway address or probe history.
 - The current providers do not require an API key or any environment variables.
 - Do not put credentials into source code or a `.env` file and assume they are hidden. A Raycast extension is client-side code, so a secret bundled into it can be extracted. An authenticated provider should use Raycast keychain-backed preferences or a server-side proxy instead.
 

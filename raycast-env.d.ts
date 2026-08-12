@@ -17,6 +17,11 @@ declare namespace Preferences {
   export type Translate = ExtensionPreferences & {}
   /** Preferences accessible in the `proofread-russian` command */
   export type ProofreadRussian = ExtensionPreferences & {}
+  /** Preferences accessible in the `ping` command */
+  export type Ping = ExtensionPreferences & {
+  /** Remote endpoint - HTTPS endpoint used to distinguish a remote-server issue from a general internet issue */
+  "remoteEndpoint": string
+}
 }
 
 declare namespace Arguments {
@@ -24,4 +29,6 @@ declare namespace Arguments {
   export type Translate = {}
   /** Arguments passed to the `proofread-russian` command */
   export type ProofreadRussian = {}
+  /** Arguments passed to the `ping` command */
+  export type Ping = {}
 }

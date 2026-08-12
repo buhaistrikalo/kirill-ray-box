@@ -29,6 +29,25 @@
       "subtitle": "Spelling & Punctuation",
       "description": "Check Russian spelling and punctuation in selected or typed text",
       "mode": "view"
+    },
+    {
+      "name": "ping",
+      "title": "Ping",
+      "subtitle": "Network status",
+      "description": "Continuously check the local network, internet path, remote server, and VPN activity",
+      "mode": "menu-bar",
+      "interval": "1m",
+      "preferences": [
+        {
+          "name": "remoteEndpoint",
+          "title": "Remote endpoint",
+          "description": "HTTPS endpoint used to distinguish a remote-server issue from a general internet issue",
+          "type": "textfield",
+          "required": false,
+          "default": "https://example.com",
+          "placeholder": "https://example.com/health"
+        }
+      ]
     }
   ],
   "dependencies": {

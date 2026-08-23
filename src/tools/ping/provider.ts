@@ -11,10 +11,15 @@ export const DEFAULT_REMOTE_ENDPOINT = "https://example.com/";
 const ROUTE_COMMAND = "/sbin/route";
 const PING_COMMAND = "/sbin/ping";
 const SCUTIL_COMMAND = "/usr/sbin/scutil";
+const NETWORKSETUP_COMMAND = "/usr/sbin/networksetup";
+const IPCONFIG_COMMAND = "/usr/sbin/ipconfig";
+const NETWORK_QUALITY_COMMAND = "/usr/bin/networkQuality";
 const ROUTE_TIMEOUT_MS = 2_000;
-const PING_TIMEOUT_MS = 1_500;
+const PING_TIMEOUT_MS = 6_500;
 const HTTP_TIMEOUT_MS = 5_000;
+const NETWORK_QUALITY_TIMEOUT_MS = 12_000;
 const MAX_COMMAND_OUTPUT_BYTES = 32 * 1024;
+const ROUTER_SLOW_LATENCY_MS = 50;
 
 export interface DefaultRoute {
   gateway: string;
@@ -89,6 +94,24 @@ export function parseDefaultRoute(output: string): DefaultRoute | undefined {
     : { gateway };
 }
 
+export function parseHardwarePortDevices(output: string): string[] {
+  return Array.from(
+    new Set(
+      Array.from(
+        output.matchAll(/^\s*Device:\s*(en\d+)\s*$/gimu),
+        (match) => match[1],
+      ),
+    ),
+  );
+}
+
+export function parseDhcpRouter(output: string): string | undefined {
+  const value = output.match(
+    /^\s*router\s+\([^)]*\):\s*(?:\{\s*)?([^\s,}]+)/imu,
+  )?.[1];
+  return asValidGateway(value);
+}
+
 export function parsePingLatency(output: string): number | undefined {
   const value = output.match(/\btime=([0-9]+(?:\.[0-9]+)?)\s*ms\b/iu)?.[1];
   if (!value) {
@@ -97,6 +120,77 @@ export function parsePingLatency(output: string): number | undefined {
 
   const latency = Number(value);
   return Number.isFinite(latency) && latency >= 0 ? latency : undefined;
+}
+
+export interface PingStatistics {
+  packetsSent?: number;
+  packetsReceived?: number;
+  packetLossPercent?: number;
+  latencyMs?: number;
+}
+
+export function parsePingStatistics(output: string): PingStatistics {
+  const packetSummary = output.match(
+    /(\d+)\s+packets transmitted,\s*(\d+)\s+packets received,\s*([0-9]+(?:\.[0-9]+)?)%\s+packet loss/iu,
+  );
+  const roundTripSummary = output.match(
+    /round-trip min\/avg\/max\/stddev\s*=\s*[0-9.]+\/([0-9.]+)\/[0-9.]+\/[0-9.]+\s*ms/iu,
+  );
+
+  return {
+    packetsSent: packetSummary ? Number(packetSummary[1]) : undefined,
+    packetsReceived: packetSummary ? Number(packetSummary[2]) : undefined,
+    packetLossPercent: packetSummary ? Number(packetSummary[3]) : undefined,
+    latencyMs: roundTripSummary ? Number(roundTripSummary[1]) : undefined,
+  };
+}
+
+export function getRouterHealthDetail(statistics: PingStatistics): string {
+  if ((statistics.packetLossPercent ?? 0) > 0) {
+    return `Роутер теряет пакеты (${statistics.packetLossPercent}%).`;
+  }
+
+  if (
+    statistics.latencyMs !== undefined &&
+    statistics.latencyMs > ROUTER_SLOW_LATENCY_MS
+  ) {
+    return `Роутер отвечает медленно (задержка ${statistics.latencyMs.toLocaleString("ru-RU", { maximumFractionDigits: 3 })} мс).`;
+  }
+
+  return "Роутер отвечает нормально.";
+}
+
+export interface NetworkQualityResult {
+  downloadMbps: number;
+  interfaceName?: string;
+}
+
+export function parseNetworkQuality(
+  output: string,
+): NetworkQualityResult | undefined {
+  try {
+    const value = JSON.parse(output) as {
+      dl_throughput?: unknown;
+      interface_name?: unknown;
+    };
+    if (
+      typeof value.dl_throughput !== "number" ||
+      !Number.isFinite(value.dl_throughput) ||
+      value.dl_throughput < 0
+    ) {
+      return undefined;
+    }
+
+    return {
+      downloadMbps: Math.round((value.dl_throughput / 1_000_000) * 10) / 10,
+      interfaceName:
+        typeof value.interface_name === "string"
+          ? asInterface(value.interface_name)
+          : undefined,
+    };
+  } catch {
+    return undefined;
+  }
 }
 
 export interface VpnActivity {
@@ -113,9 +207,10 @@ export function parseVpnActivity(output: string): VpnActivity {
     return { active: false };
   }
 
-  const serviceName = connectedLine
-    .replace(/^\s*\*?\s*\(\s*connected\s*\)\s*/iu, "")
-    .trim();
+  const quotedServiceName = connectedLine.match(/"([^"]+)"/u)?.[1]?.trim();
+  const serviceName =
+    quotedServiceName ??
+    connectedLine.replace(/^\s*\*?\s*\(\s*connected\s*\)\s*/iu, "").trim();
 
   return serviceName ? { active: true, serviceName } : { active: true };
 }
@@ -150,7 +245,15 @@ function makeProbe(
   label: string,
   state: PingProbeResult["state"],
   detail: string,
-  options: Pick<PingProbeResult, "latencyMs" | "target"> = {},
+  options: Pick<
+    PingProbeResult,
+    | "latencyMs"
+    | "target"
+    | "packetLossPercent"
+    | "packetsSent"
+    | "packetsReceived"
+    | "downloadMbps"
+  > = {},
 ): PingProbeResult {
   return { id, label, state, detail, ...options };
 }
@@ -189,27 +292,39 @@ export class MacNetworkPingProvider implements PingProvider {
 
   async check(): Promise<PingProbeSet> {
     const routeResult = await this.readDefaultRoute();
-    const gateway = await this.probeGateway(
-      routeResult.route,
-      routeResult.reason,
-    );
+    const gatewayRoute = routeResult.route ?? (await this.readPhysicalRoute());
+    const gateway = await this.probeGateway(gatewayRoute, routeResult.reason);
 
-    const [internet, server, vpn] = await Promise.all([
+    const [internetHttp, internetPing, server, vpn] = await Promise.all([
       this.probeHttp(
         "internet",
-        "Internet endpoint",
+        "Проверка интернета",
         this.internetEndpoint,
         204,
       ),
+      this.probePing(endpointName(this.internetEndpoint)),
       this.probeHttp(
         "server",
-        `Remote server (${endpointName(this.remoteEndpoint)})`,
+        `Удалённый сервер (${endpointName(this.remoteEndpoint)})`,
         this.remoteEndpoint,
       ),
       this.probeVpn(routeResult.route),
     ]);
 
-    return { gateway, internet, server, vpn };
+    const internet = { ...internetHttp, ...internetPing };
+
+    return {
+      gateway,
+      internet,
+      server,
+      vpn,
+      speed: makeProbe(
+        "speed",
+        "Скорость скачивания",
+        "not-detected",
+        "Нажмите «Измерить скорость скачивания», чтобы узнать результат.",
+      ),
+    };
   }
 
   private async readDefaultRoute(): Promise<{
@@ -229,6 +344,39 @@ export class MacNetworkPingProvider implements PingProvider {
     }
   }
 
+  private async readPhysicalRoute(): Promise<DefaultRoute | undefined> {
+    let hardwarePorts: string;
+    try {
+      const result = await this.executor(
+        NETWORKSETUP_COMMAND,
+        ["-listallhardwareports"],
+        { timeout: ROUTE_TIMEOUT_MS },
+      );
+      hardwarePorts = result.stdout;
+    } catch {
+      return undefined;
+    }
+
+    const devices = parseHardwarePortDevices(hardwarePorts);
+    const routes = await Promise.all(
+      devices.map(async (networkInterface) => {
+        try {
+          const result = await this.executor(
+            IPCONFIG_COMMAND,
+            ["getpacket", networkInterface],
+            { timeout: ROUTE_TIMEOUT_MS },
+          );
+          const gateway = parseDhcpRouter(result.stdout);
+          return gateway ? { gateway, interface: networkInterface } : undefined;
+        } catch {
+          return undefined;
+        }
+      }),
+    );
+
+    return routes.find((route) => route !== undefined);
+  }
+
   private async probeGateway(
     route: DefaultRoute | undefined,
     reason: "command-failed" | "not-found",
@@ -236,39 +384,109 @@ export class MacNetworkPingProvider implements PingProvider {
     if (!route) {
       return makeProbe(
         "gateway",
-        "Default gateway",
+        "Роутер",
         "unknown",
         reason === "command-failed"
-          ? "Could not read the macOS default route."
-          : "No usable default gateway was reported by macOS.",
+          ? "Не удалось определить роутер. Проверьте подключение или VPN."
+          : "Роутер не найден. В VPN-режиме это может быть нормально.",
       );
     }
 
     const routeDescription = route.interface
-      ? `${route.gateway} via ${route.interface}`
-      : route.gateway;
+      ? `Роутер (${route.interface})`
+      : "Роутер";
 
     try {
       const result = await this.executor(
         PING_COMMAND,
-        ["-n", "-c", "1", "-W", String(PING_TIMEOUT_MS), route.gateway],
+        [
+          "-n",
+          ...(route.interface ? ["-b", route.interface] : []),
+          "-c",
+          "5",
+          "-W",
+          "1000",
+          route.gateway,
+        ],
         { timeout: PING_TIMEOUT_MS + 500 },
       );
+      const statistics = parsePingStatistics(result.stdout);
 
       return makeProbe(
         "gateway",
-        "Default gateway",
+        "Роутер",
         "pass",
-        `${routeDescription} replied to ICMP`,
-        { latencyMs: parsePingLatency(result.stdout), target: route.gateway },
+        getRouterHealthDetail(statistics),
+        {
+          ...statistics,
+          latencyMs: statistics.latencyMs ?? parsePingLatency(result.stdout),
+          target: route.gateway,
+        },
       );
     } catch (error) {
       return makeProbe(
         "gateway",
-        "Default gateway",
+        "Роутер",
         "fail",
-        `${routeDescription} did not reply to one ICMP echo${errorLooksLikeTimeout(error) ? " before the timeout" : ""}`,
+        `${routeDescription} не отвечает${errorLooksLikeTimeout(error) ? " до истечения тайм-аута" : ""}`,
         { target: route.gateway },
+      );
+    }
+  }
+
+  private async probePing(
+    target: string,
+  ): Promise<
+    Pick<
+      PingProbeResult,
+      "latencyMs" | "packetLossPercent" | "packetsSent" | "packetsReceived"
+    >
+  > {
+    try {
+      const result = await this.executor(
+        PING_COMMAND,
+        ["-n", "-c", "5", "-W", "1000", target],
+        { timeout: PING_TIMEOUT_MS + 500 },
+      );
+      return parsePingStatistics(result.stdout);
+    } catch {
+      return {};
+    }
+  }
+
+  async measureSpeed(): Promise<PingProbeResult> {
+    try {
+      const result = await this.executor(
+        NETWORK_QUALITY_COMMAND,
+        ["-c", "-u", "-M", "8"],
+        { timeout: NETWORK_QUALITY_TIMEOUT_MS },
+      );
+      const quality = parseNetworkQuality(result.stdout);
+      if (!quality) {
+        return makeProbe(
+          "speed",
+          "Скорость скачивания",
+          "unknown",
+          "Не удалось получить результат измерения скорости.",
+        );
+      }
+
+      return makeProbe(
+        "speed",
+        "Скорость скачивания",
+        "pass",
+        "Скорость измерена",
+        {
+          downloadMbps: quality.downloadMbps,
+          target: quality.interfaceName,
+        },
+      );
+    } catch {
+      return makeProbe(
+        "speed",
+        "Скорость скачивания",
+        "unknown",
+        "Не удалось измерить скорость скачивания.",
       );
     }
   }
@@ -298,8 +516,8 @@ export class MacNetworkPingProvider implements PingProvider {
           label,
           "fail",
           controller.signal.aborted
-            ? "Request timed out"
-            : "Request failed before an HTTP response",
+            ? "Время ожидания запроса истекло"
+            : "Запрос не дал HTTP-ответа",
           { target },
         );
       }
@@ -317,13 +535,13 @@ export class MacNetworkPingProvider implements PingProvider {
 
         const expected =
           expectedStatus === undefined
-            ? "a successful HTTP status"
+            ? "успешный HTTP-статус"
             : `HTTP ${expectedStatus}`;
         return makeProbe(
           id,
           label,
           "fail",
-          `Expected ${expected}, received HTTP ${response.status}`,
+          `Ожидался ${expected}, получен HTTP ${response.status}`,
           { latencyMs, target },
         );
       }
@@ -336,7 +554,7 @@ export class MacNetworkPingProvider implements PingProvider {
         id,
         label,
         "pass",
-        `HTTP ${response.status} from ${target}`,
+        `HTTP ${response.status}, ${target}`,
         { latencyMs, target },
       );
     } finally {
@@ -350,9 +568,9 @@ export class MacNetworkPingProvider implements PingProvider {
     if (route?.interface && /^utun\d+$/iu.test(route.interface)) {
       return makeProbe(
         "vpn",
-        "VPN activity",
+        "Активность VPN",
         "pass",
-        `The default route uses tunnel interface ${route.interface}`,
+        `VPN подключён (${route.interface})`,
         { target: route.interface },
       );
     }
@@ -366,9 +584,9 @@ export class MacNetworkPingProvider implements PingProvider {
     } catch {
       return makeProbe(
         "vpn",
-        "VPN activity",
+        "Активность VPN",
         "unknown",
-        "macOS VPN status could not be inspected.",
+        "Не удалось проверить состояние VPN в macOS.",
       );
     }
 
@@ -376,20 +594,20 @@ export class MacNetworkPingProvider implements PingProvider {
     if (activity.active) {
       return makeProbe(
         "vpn",
-        "VPN activity",
+        "Активность VPN",
         "pass",
         activity.serviceName
-          ? `Connected VPN service: ${activity.serviceName}`
-          : "A connected VPN service was detected",
+          ? `VPN подключён: ${activity.serviceName}`
+          : "Обнаружено активное VPN-подключение",
         { target: activity.serviceName },
       );
     }
 
     return makeProbe(
       "vpn",
-      "VPN activity",
+      "Активность VPN",
       "not-detected",
-      "No active macOS VPN connection was detected (best effort).",
+      "Активное VPN-подключение не обнаружено (проверка приблизительная).",
     );
   }
 }

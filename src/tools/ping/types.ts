@@ -1,4 +1,4 @@
-export type PingProbeId = "gateway" | "internet" | "server" | "vpn";
+export type PingProbeId = "gateway" | "internet" | "server" | "vpn" | "speed";
 
 export type ProbeState = "pass" | "fail" | "unknown" | "not-detected";
 
@@ -9,6 +9,10 @@ export interface PingProbeResult {
   detail: string;
   target?: string;
   latencyMs?: number;
+  packetLossPercent?: number;
+  packetsSent?: number;
+  packetsReceived?: number;
+  downloadMbps?: number;
 }
 
 export interface PingProbeSet {
@@ -16,6 +20,7 @@ export interface PingProbeSet {
   internet: PingProbeResult;
   server: PingProbeResult;
   vpn: PingProbeResult;
+  speed: PingProbeResult;
 }
 
 export type PingDiagnosisCode =

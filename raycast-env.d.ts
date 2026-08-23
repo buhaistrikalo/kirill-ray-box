@@ -19,7 +19,7 @@ declare namespace Preferences {
   export type ProofreadRussian = ExtensionPreferences & {}
   /** Preferences accessible in the `ping` command */
   export type Ping = ExtensionPreferences & {
-  /** Remote endpoint - HTTPS endpoint used to distinguish a remote-server issue from a general internet issue */
+  /** Удалённый адрес - HTTPS-адрес для отличия проблемы удалённого сервера от общей проблемы с интернетом */
   "remoteEndpoint": string
 }
 }

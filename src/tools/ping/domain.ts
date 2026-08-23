@@ -8,13 +8,13 @@ import type {
 export function getProbeStateLabel(state: ProbeState): string {
   switch (state) {
     case "pass":
-      return "OK";
+      return "Работает";
     case "fail":
-      return "Failed";
+      return "Ошибка";
     case "not-detected":
-      return "Not detected";
+      return "Не обнаружено";
     case "unknown":
-      return "Unknown";
+      return "Неизвестно";
   }
 }
 
@@ -23,13 +23,29 @@ export function diagnosePing(probes: PingProbeSet): PingDiagnosis {
   const localPathConfirmedByVpn =
     gateway.state === "unknown" && vpn.state === "pass";
 
+  if ((gateway.packetLossPercent ?? 0) > 0) {
+    return {
+      code: "local-network",
+      title: "Потери пакетов в локальной сети",
+      summary: `${gateway.packetLossPercent}% пакетов теряется между Mac и роутером.`,
+    };
+  }
+
+  if ((internet.packetLossPercent ?? 0) > 0) {
+    return {
+      code: "isp-or-internet",
+      title: "Потери пакетов в интернете",
+      summary: `${internet.packetLossPercent}% пакетов теряется после нормального соединения с роутером.`,
+    };
+  }
+
   if (internet.state === "pass") {
     if (server.state === "fail") {
       return {
         code: "remote-server",
-        title: "Remote server",
+        title: "Удалённый сервер",
         summary:
-          "The internet probe replied, but the configured remote server did not.",
+          "Интернет доступен, но настроенный удалённый сервер не отвечает.",
       };
     }
 
@@ -39,18 +55,18 @@ export function diagnosePing(probes: PingProbeSet): PingDiagnosis {
     ) {
       return {
         code: "inconclusive",
-        title: "Inconclusive",
+        title: "Нельзя точно определить",
         summary:
-          "Internet access works, but one local or remote probe could not confirm the full path.",
+          "Интернет доступен, но локальная или удалённая проверка не подтвердила весь маршрут.",
       };
     }
 
     return {
       code: "healthy",
-      title: "Online",
+      title: "В сети",
       summary: localPathConfirmedByVpn
-        ? "The internet endpoint and remote server are reachable through the detected VPN path."
-        : "The default gateway, internet endpoint, and remote server are reachable.",
+        ? "Точка проверки интернета и удалённый сервер доступны через обнаруженный VPN-маршрут."
+        : "Роутер, интернет и удалённый сервер доступны.",
     };
   }
 
@@ -58,36 +74,36 @@ export function diagnosePing(probes: PingProbeSet): PingDiagnosis {
     if (vpn.state === "pass") {
       return {
         code: "vpn",
-        title: "VPN path",
+        title: "Маршрут через VPN",
         summary:
-          "The internet probe failed while VPN activity or a VPN route was detected.",
+          "Проверка интернета не удалась, при этом обнаружена активность VPN или VPN-маршрут.",
       };
     }
 
     if (vpn.state === "unknown") {
       return {
         code: "inconclusive",
-        title: "Inconclusive",
+        title: "Нельзя точно определить",
         summary:
-          "The internet probe failed, but VPN activity could not be inspected, so the failing path cannot be isolated.",
+          "Проверка интернета не удалась, а состояние VPN проверить не удалось — определить проблемный участок нельзя.",
       };
     }
 
     if (gateway.state === "fail") {
       return {
         code: "local-network",
-        title: "Local network",
+        title: "Локальная сеть",
         summary:
-          "The default gateway and internet probe failed; check Wi-Fi, Ethernet, or the router.",
+          "Нет связи с роутером и интернетом; проверьте Wi-Fi, Ethernet или сам роутер.",
       };
     }
 
     if (gateway.state === "pass") {
       return {
         code: "isp-or-internet",
-        title: "ISP / internet",
+        title: "Провайдер / интернет",
         summary:
-          "The local gateway replied, but the internet endpoint did not; the break is beyond the local network or at the ISP.",
+          "Роутер отвечает, но интернет — нет; проблема за пределами локальной сети или у провайдера.",
       };
     }
   }
@@ -95,24 +111,40 @@ export function diagnosePing(probes: PingProbeSet): PingDiagnosis {
   if (gateway.state !== "pass" || server.state !== "pass") {
     return {
       code: "inconclusive",
-      title: "Inconclusive",
+      title: "Нельзя точно определить",
       summary:
-        "Some probes could not complete, so the failing layer cannot be isolated.",
+        "Некоторые проверки не завершились, поэтому определить проблемный участок нельзя.",
     };
   }
 
   return {
     code: "inconclusive",
-    title: "Inconclusive",
-    summary:
-      "The network check did not produce enough evidence for a diagnosis.",
+    title: "Нельзя точно определить",
+    summary: "Проверка сети не дала достаточно данных для диагноза.",
   };
 }
 
 export function getProbeDetail(probe: PingProbeResult): string {
-  const state = getProbeStateLabel(probe.state);
+  const state =
+    probe.id === "gateway" && probe.state === "unknown"
+      ? "Не определён"
+      : probe.id === "speed" && probe.state === "not-detected"
+        ? "Не измерено"
+        : getProbeStateLabel(probe.state);
   const latency =
-    probe.latencyMs === undefined ? undefined : `${probe.latencyMs} ms`;
+    probe.latencyMs === undefined
+      ? undefined
+      : `${probe.latencyMs.toLocaleString("ru-RU", { maximumFractionDigits: 3 })} мс`;
+  const packetLoss =
+    probe.packetLossPercent === undefined
+      ? undefined
+      : `Потери ${probe.packetLossPercent}%`;
+  const download =
+    probe.downloadMbps === undefined
+      ? undefined
+      : `↓ ${probe.downloadMbps.toLocaleString("ru-RU", { maximumFractionDigits: 3 })} Мбит/с`;
 
-  return [state, latency, probe.detail].filter(Boolean).join(" · ");
+  return [state, latency, packetLoss, download, probe.detail]
+    .filter(Boolean)
+    .join(" · ");
 }

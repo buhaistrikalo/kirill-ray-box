@@ -23,7 +23,7 @@ type StatusPresentation = {
 };
 
 function getErrorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : "Network check failed";
+  return error instanceof Error ? error.message : "Не удалось проверить сеть";
 }
 
 function getStatusPresentation(
@@ -79,8 +79,8 @@ function getStatusPresentation(
   }
 
   return {
-    title: isLoading ? "Checking…" : "Unknown",
-    summary: error ?? "Waiting for the first network check.",
+    title: isLoading ? "Проверка…" : "Неизвестно",
+    summary: error ?? "Ожидание первой проверки сети.",
     icon: isLoading ? Icon.CircleProgress : Icon.QuestionMarkCircle,
     color: Color.Yellow,
   };
@@ -105,7 +105,7 @@ function getProbeIcon(probe: PingProbeResult): {
 function formatCheckedAt(checkedAt: string): string {
   const date = new Date(checkedAt);
   if (Number.isNaN(date.getTime())) {
-    return "Unknown";
+    return "Неизвестно";
   }
 
   return date.toLocaleTimeString(undefined, {
@@ -121,31 +121,35 @@ function getTooltip(
   isLoading: boolean,
 ): string {
   const checkedAt = result
-    ? `Last checked: ${formatCheckedAt(result.checkedAt)}`
-    : "No completed check yet";
-  const refreshing = isLoading ? "\nRefreshing…" : "";
+    ? `Последняя проверка: ${formatCheckedAt(result.checkedAt)}`
+    : "Проверка ещё не завершена";
+  const refreshing = isLoading ? "\nОбновление…" : "";
   return `${presentation.title}: ${presentation.summary}\n${checkedAt}${refreshing}`;
 }
 
 export default function PingCommand() {
   const preferences = getPreferenceValues<Preferences.Ping>();
   const remoteEndpoint = normalizeRemoteEndpoint(preferences.remoteEndpoint);
-  const service = useMemo(
-    () => new PingService(new MacNetworkPingProvider({ remoteEndpoint })),
-    [remoteEndpoint],
-  );
+  const service = useMemo(() => {
+    const provider = new MacNetworkPingProvider({ remoteEndpoint });
+    return { provider, service: new PingService(provider) };
+  }, [remoteEndpoint]);
   const requestNumber = useRef(0);
   const [result, setResult] = useState<PingResult>();
   const [error, setError] = useState<string>();
   const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(true);
+  const [isSpeedLoading, setIsSpeedLoading] = useState(false);
 
   const refresh = useCallback(async () => {
     const currentRequest = ++requestNumber.current;
     setIsLoading(true);
+    setIsRefreshing(true);
+    setIsSpeedLoading(false);
     setError(undefined);
 
     try {
-      const nextResult = await service.check();
+      const nextResult = await service.service.check();
       if (currentRequest !== requestNumber.current) {
         return;
       }
@@ -159,6 +163,32 @@ export default function PingCommand() {
       setResult(undefined);
       setError(getErrorMessage(checkError));
     } finally {
+      if (currentRequest === requestNumber.current) {
+        setIsRefreshing(false);
+        setIsLoading(false);
+      }
+    }
+  }, [service]);
+
+  const measureSpeed = useCallback(async () => {
+    const currentRequest = ++requestNumber.current;
+    setIsLoading(true);
+    setIsRefreshing(false);
+    setIsSpeedLoading(true);
+    setError(undefined);
+
+    try {
+      const speed = await service.provider.measureSpeed();
+      if (currentRequest !== requestNumber.current) {
+        return;
+      }
+      setResult((current) => (current ? { ...current, speed } : current));
+    } catch (speedError) {
+      if (currentRequest === requestNumber.current) {
+        setError(getErrorMessage(speedError));
+      }
+    } finally {
+      setIsSpeedLoading(false);
       if (currentRequest === requestNumber.current) {
         setIsLoading(false);
       }
@@ -175,7 +205,7 @@ export default function PingCommand() {
     isLoading,
   );
   const probes = result
-    ? [result.gateway, result.internet, result.server, result.vpn]
+    ? [result.gateway, result.internet, result.speed, result.server, result.vpn]
     : [];
 
   return (
@@ -184,7 +214,7 @@ export default function PingCommand() {
       tooltip={getTooltip(presentation, result, isLoading)}
       isLoading={isLoading}
     >
-      <MenuBarExtra.Section title="Diagnosis">
+      <MenuBarExtra.Section title="Диагностика">
         <MenuBarExtra.Item
           title={presentation.title}
           subtitle={presentation.summary}
@@ -192,7 +222,7 @@ export default function PingCommand() {
         />
       </MenuBarExtra.Section>
 
-      <MenuBarExtra.Section title="Probes">
+      <MenuBarExtra.Section title="Проверки">
         {probes.length > 0 ? (
           probes.map((probe) => (
             <MenuBarExtra.Item
@@ -204,8 +234,8 @@ export default function PingCommand() {
           ))
         ) : (
           <MenuBarExtra.Item
-            title={error ? "Check failed" : "Checking network…"}
-            subtitle={error ?? "Waiting for the first completed probe"}
+            title={error ? "Проверка не удалась" : "Проверка сети…"}
+            subtitle={error ?? "Ожидание завершения первой проверки"}
             icon={{
               source: error ? Icon.QuestionMarkCircle : Icon.CircleProgress,
               tintColor: Color.Yellow,
@@ -215,10 +245,10 @@ export default function PingCommand() {
       </MenuBarExtra.Section>
 
       {result ? (
-        <MenuBarExtra.Section title="Last checked">
+        <MenuBarExtra.Section title="Последняя проверка">
           <MenuBarExtra.Item
             title={formatCheckedAt(result.checkedAt)}
-            subtitle="Local time"
+            subtitle="Местное время"
             icon={Icon.Clock}
           />
         </MenuBarExtra.Section>
@@ -226,8 +256,18 @@ export default function PingCommand() {
 
       <MenuBarExtra.Section>
         <MenuBarExtra.Item
-          title={isLoading ? "Refreshing…" : "Refresh now"}
-          subtitle="Run all network probes"
+          title={
+            isSpeedLoading
+              ? "Измерение скорости…"
+              : "Измерить скорость скачивания"
+          }
+          subtitle="Покажет, как быстро скачиваются данные; до 8 секунд"
+          icon={Icon.Gauge}
+          onAction={() => void measureSpeed()}
+        />
+        <MenuBarExtra.Item
+          title={isRefreshing ? "Обновление…" : "Обновить сейчас"}
+          subtitle="Запустить все проверки сети"
           icon={Icon.ArrowClockwise}
           shortcut={Keyboard.Shortcut.Common.Refresh}
           onAction={() => void refresh()}

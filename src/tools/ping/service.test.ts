@@ -6,29 +6,36 @@ import type { PingProbeSet, PingProvider } from "./types";
 const probes: PingProbeSet = {
   gateway: {
     id: "gateway",
-    label: "Default gateway",
+    label: "Роутер",
     state: "pass",
     detail: "Gateway replied",
   },
   internet: {
     id: "internet",
-    label: "Internet endpoint",
+    label: "Проверка интернета",
     state: "pass",
     detail: "HTTP 204",
     latencyMs: 12,
   },
   server: {
     id: "server",
-    label: "Remote server",
+    label: "Удалённый сервер",
     state: "pass",
     detail: "HTTP 200",
     latencyMs: 20,
   },
   vpn: {
     id: "vpn",
-    label: "VPN activity",
+    label: "Активность VPN",
     state: "not-detected",
     detail: "No active VPN detected",
+  },
+  speed: {
+    id: "speed",
+    label: "Скорость скачивания",
+    state: "pass",
+    detail: "Measured on en0",
+    downloadMbps: 84.3,
   },
 };
 

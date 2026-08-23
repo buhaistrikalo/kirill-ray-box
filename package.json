@@ -31,6 +31,13 @@
       "mode": "view"
     },
     {
+      "name": "clean-markdown",
+      "title": "Очистить Markdown",
+      "subtitle": "Убрать форматирование",
+      "description": "Убрать Markdown-разметку из выделенного или введённого текста",
+      "mode": "view"
+    },
+    {
       "name": "ping",
       "title": "Пинг",
       "subtitle": "Состояние сети",

@@ -32,16 +32,16 @@
     },
     {
       "name": "ping",
-      "title": "Ping",
-      "subtitle": "Network status",
-      "description": "Continuously check the local network, internet path, remote server, and VPN activity",
+      "title": "Пинг",
+      "subtitle": "Состояние сети",
+      "description": "Постоянно проверять локальную сеть, интернет, удалённый сервер и VPN",
       "mode": "menu-bar",
       "interval": "1m",
       "preferences": [
         {
           "name": "remoteEndpoint",
-          "title": "Remote endpoint",
-          "description": "HTTPS endpoint used to distinguish a remote-server issue from a general internet issue",
+          "title": "Удалённый адрес",
+          "description": "HTTPS-адрес для отличия проблемы удалённого сервера от общей проблемы с интернетом",
           "type": "textfield",
           "required": false,
           "default": "https://example.com",

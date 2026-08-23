@@ -26,6 +26,7 @@ function probes(
     internet: probe("internet", internet),
     server: probe("server", server),
     vpn: probe("vpn", vpn),
+    speed: probe("speed", "pass"),
   };
 }
 
@@ -33,7 +34,7 @@ describe("Ping diagnosis", () => {
   it("reports a healthy path when every required layer responds", () => {
     expect(diagnosePing(probes("pass", "pass", "pass"))).toMatchObject({
       code: "healthy",
-      title: "Online",
+      title: "В сети",
     });
   });
 
@@ -43,7 +44,7 @@ describe("Ping diagnosis", () => {
     ).toMatchObject({
       code: "healthy",
       summary:
-        "The internet endpoint and remote server are reachable through the detected VPN path.",
+        "Точка проверки интернета и удалённый сервер доступны через обнаруженный VPN-маршрут.",
     });
   });
 
@@ -79,6 +80,21 @@ describe("Ping diagnosis", () => {
     });
   });
 
+  it("attributes gateway packet loss to the local network", () => {
+    const result = probes("pass", "pass", "pass");
+    result.gateway.packetLossPercent = 20;
+
+    expect(diagnosePing(result)).toMatchObject({ code: "local-network" });
+  });
+
+  it("attributes internet packet loss beyond a clean gateway to the ISP path", () => {
+    const result = probes("pass", "pass", "pass");
+    result.gateway.packetLossPercent = 0;
+    result.internet.packetLossPercent = 20;
+
+    expect(diagnosePing(result)).toMatchObject({ code: "isp-or-internet" });
+  });
+
   it("stays honest when a local probe fails but the internet works", () => {
     expect(diagnosePing(probes("fail", "pass", "pass"))).toMatchObject({
       code: "inconclusive",
@@ -88,12 +104,48 @@ describe("Ping diagnosis", () => {
 
 describe("Ping probe labels", () => {
   it("formats state, latency, and detail for the menu", () => {
-    expect(getProbeStateLabel("not-detected")).toBe("Not detected");
+    expect(getProbeStateLabel("not-detected")).toBe("Не обнаружено");
     expect(
       getProbeDetail({
         ...probe("internet", "pass"),
         latencyMs: 12.5,
       }),
-    ).toBe("OK · 12.5 ms · internet detail");
+    ).toBe("Работает · 12,5 мс · internet detail");
+  });
+
+  it("shows packet loss and download throughput when measured", () => {
+    expect(
+      getProbeDetail({
+        ...probe("internet", "pass"),
+        latencyMs: 15.625,
+        packetLossPercent: 20,
+        downloadMbps: 84.3,
+      }),
+    ).toBe(
+      "Работает · 15,625 мс · Потери 20% · ↓ 84,3 Мбит/с · internet detail",
+    );
+  });
+
+  it("calls an unmeasured download speed a measurement state, not a failure", () => {
+    expect(
+      getProbeDetail({
+        ...probe("speed", "not-detected"),
+        detail:
+          "Нажмите «Измерить скорость скачивания», чтобы узнать результат.",
+      }),
+    ).toBe(
+      "Не измерено · Нажмите «Измерить скорость скачивания», чтобы узнать результат.",
+    );
+  });
+
+  it("explains an unavailable router without calling it a network failure", () => {
+    expect(
+      getProbeDetail({
+        ...probe("gateway", "unknown"),
+        detail: "Роутер не найден. В VPN-режиме это может быть нормально.",
+      }),
+    ).toBe(
+      "Не определён · Роутер не найден. В VPN-режиме это может быть нормально.",
+    );
   });
 });

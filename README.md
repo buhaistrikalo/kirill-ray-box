@@ -19,13 +19,13 @@ Check Russian spelling and punctuation in selected text, clipboard contents, or 
 
 ### Ping
 
-Keep a menu-bar network status visible with a background check every 60 seconds. Ping checks the macOS default gateway, a Google HTTP 204 connectivity endpoint, a configurable HTTPS remote endpoint (default: `https://example.com`), and detectable macOS VPN activity. Its diagnosis is deliberately layered: it distinguishes likely local-network, ISP/internet-path, remote-server, and VPN problems, while showing `Inconclusive` when the probes do not prove a layer.
+Keep a menu-bar network status visible with a background check every 60 seconds. Ping checks the local router (macOS default gateway), packet loss to the internet host behind Google's HTTP 204 connectivity endpoint, a configurable HTTPS remote endpoint (default: `https://example.com`), and detectable macOS VPN activity. Its diagnosis is deliberately layered: it distinguishes likely local-network, ISP/internet-path, remote-server, and VPN problems, while showing `Inconclusive` when the probes do not prove a layer. A separate action runs macOS `networkQuality` for an explicit download-speed test of up to 8 seconds.
 
 ## Privacy and configuration
 
 - Translation text is sent over HTTPS to Google's public translation endpoint.
 - Russian proofreading text is sent over HTTPS to LanguageTool's public API.
-- Ping sends only connectivity requests: one ICMP echo to the local default gateway and HTTPS requests to the configured public endpoints. It does not send user text, credentials, or request data to those endpoints.
+- Ping sends only connectivity requests: five ICMP echoes to the local default gateway, five ICMP echoes to the internet host, and HTTPS requests to the configured public endpoints. The optional speed test uses macOS `networkQuality` and transfers test traffic. It does not send user text, credentials, or request data to those endpoints.
 - The extension does not persist translation history or store user text locally.
 - Ping keeps its current result in Raycast's running menu-bar command only; it does not persist the local gateway address or probe history.
 - The current providers do not require an API key or any environment variables.

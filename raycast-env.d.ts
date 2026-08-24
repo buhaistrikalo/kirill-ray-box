@@ -14,10 +14,7 @@ declare type Preferences = ExtensionPreferences
 
 declare namespace Preferences {
   /** Preferences accessible in the `translate` command */
-  export type Translate = ExtensionPreferences & {
-  /** DeepL API key - Personal API key from DeepL. API Free keys end in :fx; Pro keys are also supported. */
-  "deepLApiKey": string
-}
+  export type Translate = ExtensionPreferences & {}
   /** Preferences accessible in the `proofread-russian` command */
   export type ProofreadRussian = ExtensionPreferences & {}
   /** Preferences accessible in the `clean-markdown` command */

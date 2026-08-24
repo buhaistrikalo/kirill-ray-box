@@ -5,18 +5,17 @@ import {
 } from "./domain";
 import type { TranslationProvider, TranslationResult } from "./types";
 
-const DEEPL_FREE_TRANSLATE_ENDPOINT = "https://api-free.deepl.com/v2/translate";
-const DEEPL_PRO_TRANSLATE_ENDPOINT = "https://api.deepl.com/v2/translate";
+const GOOGLE_TRANSLATE_ENDPOINT =
+  "https://translate.googleapis.com/translate_a/single";
 const TRANSLATION_TIMEOUT_MS = 15_000;
 
-type DeepLTranslation = {
-  detected_source_language?: unknown;
-  text?: unknown;
+type GoogleSentence = {
+  trans?: unknown;
 };
 
-type ParsedDeepLResponse = {
+type ParsedGoogleResponse = {
   text: string;
-  detectedSourceLanguage?: SupportedLanguage;
+  detectedLanguage?: SupportedLanguage;
 };
 
 function asSupportedLanguage(value: unknown): SupportedLanguage | undefined {
@@ -28,68 +27,58 @@ function asSupportedLanguage(value: unknown): SupportedLanguage | undefined {
   return language === "ru" || language === "en" ? language : undefined;
 }
 
-export function parseDeepLTranslateResponse(
+export function parseGoogleTranslateResponse(
   payload: unknown,
-): ParsedDeepLResponse {
+): ParsedGoogleResponse {
   if (
     typeof payload === "object" &&
     payload !== null &&
     !Array.isArray(payload)
   ) {
-    const response = payload as { translations?: unknown };
-    const translation = Array.isArray(response.translations)
-      ? (response.translations[0] as DeepLTranslation | undefined)
-      : undefined;
+    const response = payload as { sentences?: unknown; src?: unknown };
+    if (Array.isArray(response.sentences)) {
+      const text = response.sentences
+        .map((sentence) => (sentence as GoogleSentence)?.trans)
+        .filter((part): part is string => typeof part === "string")
+        .join("");
 
-    if (typeof translation?.text === "string" && translation.text.length > 0) {
-      return {
-        text: translation.text,
-        detectedSourceLanguage: asSupportedLanguage(
-          translation.detected_source_language,
-        ),
-      };
+      if (text.length > 0) {
+        return { text, detectedLanguage: asSupportedLanguage(response.src) };
+      }
+    }
+  }
+
+  if (Array.isArray(payload) && Array.isArray(payload[0])) {
+    const text = payload[0]
+      .map((sentence) => (Array.isArray(sentence) ? sentence[0] : undefined))
+      .filter((part): part is string => typeof part === "string")
+      .join("");
+
+    if (text.length > 0) {
+      return { text, detectedLanguage: asSupportedLanguage(payload[2]) };
     }
   }
 
   throw new Error("Translation service returned an empty response");
 }
 
-function getDeepLError(response: Response): string {
-  if (response.status === 401 || response.status === 403) {
-    return "DeepL rejected the API key. Check it in Raycast settings.";
-  }
-
-  if (response.status === 429) {
-    return "DeepL is rate-limiting requests. Try again shortly.";
-  }
-
-  if (response.status === 456) {
-    return "DeepL API character limit has been reached.";
-  }
-
-  return `Translation service returned HTTP ${response.status}`;
-}
-
-export class DeepLTranslateProvider implements TranslationProvider {
+export class GoogleTranslateProvider implements TranslationProvider {
   constructor(
-    private readonly apiKey: string,
     private readonly fetcher: typeof fetch = fetch,
-    private readonly freeEndpoint = DEEPL_FREE_TRANSLATE_ENDPOINT,
-    private readonly proEndpoint = DEEPL_PRO_TRANSLATE_ENDPOINT,
+    private readonly endpoint = GOOGLE_TRANSLATE_ENDPOINT,
   ) {}
 
   async translate(text: string): Promise<TranslationResult> {
-    if (!this.apiKey.trim()) {
-      throw new Error(
-        "Add a DeepL API key in Raycast settings to translate text.",
-      );
-    }
-
     const localSourceLanguage = detectLanguage(text);
     const targetLanguage = getTargetLanguage(localSourceLanguage);
-    const endpoint = this.apiKey.trim().endsWith(":fx")
-      ? this.freeEndpoint
-      : this.proEndpoint;
+    const url = new URL(this.endpoint);
+
+    url.searchParams.set("client", "gtx");
+    url.searchParams.set("sl", "auto");
+    url.searchParams.set("tl", targetLanguage);
+    url.searchParams.set("dt", "t");
+    url.searchParams.set("dj", "1");
+    url.searchParams.set("q", text);
 
     const controller = new AbortController();
     const timeout = setTimeout(
@@ -100,17 +89,8 @@ export class DeepLTranslateProvider implements TranslationProvider {
     try {
       let response: Response;
       try {
-        response = await this.fetcher(endpoint, {
-          method: "POST",
-          headers: {
-            Accept: "application/json",
-            Authorization: `DeepL-Auth-Key ${this.apiKey.trim()}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            text: [text],
-            target_lang: targetLanguage.toUpperCase(),
-          }),
+        response = await this.fetcher(url.toString(), {
+          headers: { Accept: "application/json" },
           signal: controller.signal,
         });
       } catch {
@@ -122,7 +102,7 @@ export class DeepLTranslateProvider implements TranslationProvider {
       }
 
       if (!response.ok) {
-        throw new Error(getDeepLError(response));
+        throw new Error(`Translation service returned HTTP ${response.status}`);
       }
 
       let payload: unknown;
@@ -136,13 +116,13 @@ export class DeepLTranslateProvider implements TranslationProvider {
         throw new Error("Translation service returned invalid JSON");
       }
 
-      const parsed = parseDeepLTranslateResponse(payload);
+      const parsed = parseGoogleTranslateResponse(payload);
 
       return {
         text: parsed.text,
-        sourceLanguage: parsed.detectedSourceLanguage ?? localSourceLanguage,
+        sourceLanguage: parsed.detectedLanguage ?? localSourceLanguage,
         targetLanguage,
-        provider: "deepl",
+        provider: "google-web",
       };
     } finally {
       clearTimeout(timeout);

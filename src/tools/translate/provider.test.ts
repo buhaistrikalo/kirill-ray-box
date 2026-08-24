@@ -1,21 +1,20 @@
 import { describe, expect, it, vi } from "vitest";
 
 import {
-  DeepLTranslateProvider,
-  parseDeepLTranslateResponse,
+  GoogleTranslateProvider,
+  parseGoogleTranslateResponse,
 } from "./provider";
 
-const englishResponse = {
-  translations: [
-    { text: "Hello, how are you?", detected_source_language: "RU" },
-  ],
+const russianResponse = {
+  sentences: [{ trans: "Hello, how are you?", orig: "Привет, как дела?" }],
+  src: "ru",
 };
 
-describe("DeepL translation provider", () => {
+describe("Google translation provider", () => {
   it("parses the JSON response returned by the endpoint", () => {
-    expect(parseDeepLTranslateResponse(englishResponse)).toEqual({
+    expect(parseGoogleTranslateResponse(russianResponse)).toEqual({
       text: "Hello, how are you?",
-      detectedSourceLanguage: "ru",
+      detectedLanguage: "ru",
     });
   });
 
@@ -23,10 +22,10 @@ describe("DeepL translation provider", () => {
     const requests: Array<{ url: string; init?: RequestInit }> = [];
     const fetcher: typeof fetch = async (input, init) => {
       requests.push({ url: String(input), init });
-      return new Response(JSON.stringify(englishResponse), { status: 200 });
+      return new Response(JSON.stringify(russianResponse), { status: 200 });
     };
 
-    const provider = new DeepLTranslateProvider("test-key:fx", fetcher);
+    const provider = new GoogleTranslateProvider(fetcher);
     const result = await provider.translate("Привет, как дела?");
 
     expect(result).toMatchObject({
@@ -34,14 +33,8 @@ describe("DeepL translation provider", () => {
       sourceLanguage: "ru",
       targetLanguage: "en",
     });
-    expect(requests[0]?.url).toBe("https://api-free.deepl.com/v2/translate");
-    expect(requests[0]?.init?.method).toBe("POST");
-    expect(requests[0]?.init?.headers).toMatchObject({
-      Authorization: "DeepL-Auth-Key test-key:fx",
-    });
-    expect(requests[0]?.init?.body).toBe(
-      JSON.stringify({ text: ["Привет, как дела?"], target_lang: "EN" }),
-    );
+    expect(requests[0]?.url).toContain("sl=auto");
+    expect(requests[0]?.url).toContain("tl=en");
   });
 
   it("exposes a readable error when the endpoint fails", async () => {
@@ -50,7 +43,7 @@ describe("DeepL translation provider", () => {
         status: 503,
         statusText: "Service Unavailable",
       });
-    const provider = new DeepLTranslateProvider("test-key:fx", fetcher);
+    const provider = new GoogleTranslateProvider(fetcher);
 
     await expect(provider.translate("Hello")).rejects.toThrow(
       "Translation service returned HTTP 503",
@@ -78,10 +71,7 @@ describe("DeepL translation provider", () => {
         } as Response;
       };
 
-      const promise = new DeepLTranslateProvider(
-        "test-key:fx",
-        fetcher,
-      ).translate("Hello");
+      const promise = new GoogleTranslateProvider(fetcher).translate("Hello");
       const rejection = expect(promise).rejects.toThrow(
         "Translation service request timed out",
       );
@@ -92,25 +82,5 @@ describe("DeepL translation provider", () => {
     } finally {
       vi.useRealTimers();
     }
-  });
-
-  it("does not make a request without an API key", async () => {
-    const fetcher = vi.fn<typeof fetch>();
-
-    await expect(
-      new DeepLTranslateProvider("   ", fetcher).translate("Hello"),
-    ).rejects.toThrow(
-      "Add a DeepL API key in Raycast settings to translate text.",
-    );
-    expect(fetcher).not.toHaveBeenCalled();
-  });
-
-  it("explains DeepL rate limits", async () => {
-    const fetcher: typeof fetch = async () =>
-      new Response(null, { status: 429 });
-
-    await expect(
-      new DeepLTranslateProvider("test-key:fx", fetcher).translate("Hello"),
-    ).rejects.toThrow("DeepL is rate-limiting requests. Try again shortly.");
   });
 });

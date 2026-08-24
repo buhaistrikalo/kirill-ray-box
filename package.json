@@ -21,7 +21,16 @@
       "title": "Translate Text",
       "subtitle": "RU ↔ EN",
       "description": "Translate selected or typed text between Russian and English",
-      "mode": "view"
+      "mode": "view",
+      "preferences": [
+        {
+          "name": "deepLApiKey",
+          "title": "DeepL API key",
+          "description": "Personal API key from DeepL. API Free keys end in :fx; Pro keys are also supported.",
+          "type": "password",
+          "required": true
+        }
+      ]
     },
     {
       "name": "proofread-russian",

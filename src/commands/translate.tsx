@@ -3,6 +3,7 @@ import {
   ActionPanel,
   Clipboard,
   Detail,
+  getPreferenceValues,
   Form,
   getSelectedText,
   Icon,
@@ -11,7 +12,7 @@ import {
 } from "@raycast/api";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { GoogleTranslateProvider } from "../tools/translate/provider";
+import { DeepLTranslateProvider } from "../tools/translate/provider";
 import { TranslationService } from "../tools/translate/service";
 import { formatResult } from "../tools/translate/markdown";
 import type { TranslationResult } from "../tools/translate/types";
@@ -25,9 +26,13 @@ function getErrorMessage(error: unknown): string {
 }
 
 export default function TranslateCommand() {
+  const preferences = getPreferenceValues<{ deepLApiKey: string }>();
   const service = useMemo(
-    () => new TranslationService(new GoogleTranslateProvider()),
-    [],
+    () =>
+      new TranslationService(
+        new DeepLTranslateProvider(preferences.deepLApiKey),
+      ),
+    [preferences.deepLApiKey],
   );
   const requestNumber = useRef(0);
   const [sourceText, setSourceText] = useState("");

@@ -27,14 +27,14 @@ Keep a menu-bar network status visible with a background check every 60 seconds.
 
 ## Privacy and configuration
 
-- Translation text is sent over HTTPS to Google's public translation endpoint.
+- Translation text is sent over HTTPS to DeepL's official API. The command requires a personal DeepL API key, stored as a Raycast password preference.
 - Russian proofreading text is sent over HTTPS to LanguageTool's public API.
 - Markdown cleaning runs locally and does not send text to a provider.
 - Ping sends only connectivity requests: five ICMP echoes to the local default gateway, five ICMP echoes to the internet host, and HTTPS requests to the configured public endpoints. The optional speed test uses macOS `networkQuality` and transfers test traffic. It does not send user text, credentials, or request data to those endpoints.
 - The extension does not persist translation history or store user text locally.
 - Ping keeps its current result in Raycast's running menu-bar command only; it does not persist the local gateway address or probe history.
-- The current providers do not require an API key or any environment variables.
-- Do not put credentials into source code or a `.env` file and assume they are hidden. A Raycast extension is client-side code, so a secret bundled into it can be extracted. An authenticated provider should use Raycast keychain-backed preferences or a server-side proxy instead.
+- Translation requires a personal DeepL API key; no key is bundled into the extension or committed to the repository. Other current providers do not require an API key or any environment variables.
+- Do not put credentials into source code or a `.env` file. For a shared or distributed extension, use a server-side proxy instead of sharing an API key.
 
 Do not send confidential or regulated data through the current public providers.
 
@@ -76,9 +76,7 @@ Shared infrastructure belongs in `src/shared`. New tools should add their own di
 
 ## Translation backend
 
-The first version uses Google's public translation endpoint with automatic source-language detection. The endpoint is isolated behind `TranslationProvider`, so it can be replaced with an authenticated or self-hosted provider later without changing the user flow.
-
-The public endpoint may be rate-limited or change without notice. It is intentionally treated as a replaceable provider rather than a guaranteed production API.
+Translation uses DeepL's official API with automatic source-language detection. Create a personal key in the [DeepL API dashboard](https://www.deepl.com/pro-api), then add it to the command's Raycast settings. API Free keys ending in `:fx` use the Free endpoint; other keys use the Pro endpoint. The provider remains isolated behind `TranslationProvider`, so a self-hosted or server-proxied backend can replace it later without changing the user flow.
 
 ## Russian proofreading backend
 

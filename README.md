@@ -27,7 +27,7 @@ Keep a menu-bar network status visible with a background check every 60 seconds.
 
 ## Privacy and configuration
 
-- Translation text is sent over HTTPS to Google's public translation endpoint.
+- Translation text is sent over HTTPS to Google's public translation endpoint. If Google returns HTTP 429, the same text is also sent to MyMemory's public translation endpoint as a fallback.
 - Russian proofreading text is sent over HTTPS to LanguageTool's public API.
 - Markdown cleaning runs locally and does not send text to a provider.
 - Ping sends only connectivity requests: five ICMP echoes to the local default gateway, five ICMP echoes to the internet host, and HTTPS requests to the configured public endpoints. The optional speed test uses macOS `networkQuality` and transfers test traffic. It does not send user text, credentials, or request data to those endpoints.
@@ -76,7 +76,7 @@ Shared infrastructure belongs in `src/shared`. New tools should add their own di
 
 ## Translation backend
 
-The first version uses Google's public translation endpoint with automatic source-language detection. The endpoint is isolated behind `TranslationProvider`, so it can be replaced with an authenticated or self-hosted provider later without changing the user flow.
+The first version uses Google's public translation endpoint with automatic source-language detection. If Google rate-limits a request, the provider falls back to MyMemory's public translation endpoint. The endpoints are isolated behind `TranslationProvider`, so they can be replaced with an authenticated or self-hosted provider later without changing the user flow.
 
 The public endpoint may be rate-limited or change without notice. It is intentionally treated as a replaceable provider rather than a guaranteed production API.
 

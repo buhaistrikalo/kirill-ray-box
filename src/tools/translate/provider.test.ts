@@ -80,6 +80,45 @@ describe("Google translation provider", () => {
     );
   });
 
+  it("times out while reading a rate-limit fallback response body", async () => {
+    vi.useFakeTimers();
+
+    try {
+      let requestNumber = 0;
+      const fetcher: typeof fetch = async (_input, init) => {
+        requestNumber += 1;
+        if (requestNumber === 1) {
+          return new Response(null, { status: 429 });
+        }
+
+        const signal = init?.signal;
+        return {
+          ok: true,
+          status: 200,
+          json: () =>
+            new Promise((_, reject) => {
+              signal?.addEventListener(
+                "abort",
+                () => reject(new Error("aborted")),
+                { once: true },
+              );
+            }),
+        } as Response;
+      };
+
+      const promise = new GoogleTranslateProvider(fetcher).translate("Hello");
+      const rejection = expect(promise).rejects.toThrow(
+        "Translation service request timed out",
+      );
+      await Promise.resolve();
+      await vi.advanceTimersByTimeAsync(15_000);
+
+      await rejection;
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("times out while reading a slow response body", async () => {
     vi.useFakeTimers();
 

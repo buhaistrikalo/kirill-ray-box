@@ -156,6 +156,10 @@ export class GoogleTranslateProvider implements TranslationProvider {
         try {
           fallbackPayload = await response.json();
         } catch {
+          if (controller.signal.aborted) {
+            throw new Error("Translation service request timed out");
+          }
+
           throw new Error("Translation service returned invalid JSON");
         }
 

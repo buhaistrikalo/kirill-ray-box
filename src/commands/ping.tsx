@@ -205,7 +205,15 @@ export default function PingCommand() {
     isLoading,
   );
   const probes = result
-    ? [result.gateway, result.internet, result.speed, result.server, result.vpn]
+    ? [
+        result.gateway,
+        result.internet,
+        result.directPath,
+        result.vpnPath,
+        result.speed,
+        result.server,
+        result.vpn,
+      ]
     : [];
 
   return (

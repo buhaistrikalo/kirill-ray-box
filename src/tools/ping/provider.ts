@@ -14,6 +14,7 @@ const SCUTIL_COMMAND = "/usr/sbin/scutil";
 const NETWORKSETUP_COMMAND = "/usr/sbin/networksetup";
 const IPCONFIG_COMMAND = "/usr/sbin/ipconfig";
 const NETWORK_QUALITY_COMMAND = "/usr/bin/networkQuality";
+const CURL_COMMAND = "/usr/bin/curl";
 const ROUTE_TIMEOUT_MS = 2_000;
 const PING_TIMEOUT_MS = 6_500;
 const HTTP_TIMEOUT_MS = 5_000;
@@ -22,7 +23,7 @@ const MAX_COMMAND_OUTPUT_BYTES = 32 * 1024;
 const ROUTER_SLOW_LATENCY_MS = 50;
 
 export interface DefaultRoute {
-  gateway: string;
+  gateway?: string;
   interface?: string;
 }
 
@@ -81,17 +82,18 @@ function asInterface(value: string | undefined): string | undefined {
 export function parseDefaultRoute(output: string): DefaultRoute | undefined {
   const gateway = asValidGateway(output.match(/^\s*gateway:\s*(\S+)/imu)?.[1]);
 
-  if (!gateway) {
-    return undefined;
-  }
-
   const networkInterface = asInterface(
     output.match(/^\s*interface:\s*(\S+)/imu)?.[1],
   );
 
-  return networkInterface
-    ? { gateway, interface: networkInterface }
-    : { gateway };
+  if (!gateway && !networkInterface) {
+    return undefined;
+  }
+
+  return {
+    ...(gateway ? { gateway } : {}),
+    ...(networkInterface ? { interface: networkInterface } : {}),
+  };
 }
 
 export function parseHardwarePortDevices(output: string): string[] {
@@ -142,6 +144,34 @@ export function parsePingStatistics(output: string): PingStatistics {
     packetsReceived: packetSummary ? Number(packetSummary[2]) : undefined,
     packetLossPercent: packetSummary ? Number(packetSummary[3]) : undefined,
     latencyMs: roundTripSummary ? Number(roundTripSummary[1]) : undefined,
+  };
+}
+
+export interface InterfaceHttpResult {
+  status: number;
+  latencyMs: number;
+  remoteIp?: string;
+}
+
+export function parseInterfaceHttpResult(
+  output: string,
+): InterfaceHttpResult | undefined {
+  const line = output.trim().split(/\r?\n/u).at(-1);
+  const match = line?.match(/^(\d{3})\|([0-9.]+)\|([^|]*)$/u);
+  if (!match) {
+    return undefined;
+  }
+
+  const status = Number(match[1]);
+  const seconds = Number(match[2]);
+  if (!Number.isInteger(status) || !Number.isFinite(seconds) || seconds < 0) {
+    return undefined;
+  }
+
+  return {
+    status,
+    latencyMs: Math.round(seconds * 1_000),
+    remoteIp: asValidGateway(match[3]),
   };
 }
 
@@ -292,30 +322,48 @@ export class MacNetworkPingProvider implements PingProvider {
 
   async check(): Promise<PingProbeSet> {
     const routeResult = await this.readDefaultRoute();
-    const gatewayRoute = routeResult.route ?? (await this.readPhysicalRoute());
+    const physicalRoute =
+      routeResult.route?.gateway &&
+      routeResult.route.interface &&
+      !/^utun\d+$/iu.test(routeResult.route.interface)
+        ? routeResult.route
+        : await this.readPhysicalRoute();
+    const gatewayRoute = routeResult.route?.gateway
+      ? routeResult.route
+      : physicalRoute;
     const gateway = await this.probeGateway(gatewayRoute, routeResult.reason);
 
-    const [internetHttp, internetPing, server, vpn] = await Promise.all([
-      this.probeHttp(
-        "internet",
-        "Проверка интернета",
-        this.internetEndpoint,
-        204,
-      ),
-      this.probePing(endpointName(this.internetEndpoint)),
-      this.probeHttp(
-        "server",
-        `Удалённый сервер (${endpointName(this.remoteEndpoint)})`,
-        this.remoteEndpoint,
-      ),
-      this.probeVpn(routeResult.route),
-    ]);
+    const [internetHttp, internetPing, directPath, vpnPath, server, vpn] =
+      await Promise.all([
+        this.probeHttp(
+          "internet",
+          "Интернет по текущему маршруту",
+          this.internetEndpoint,
+          204,
+        ),
+        this.probePing(endpointName(this.internetEndpoint)),
+        this.probeDirectPath(
+          routeResult.route?.interface &&
+            !/^utun\d+$/iu.test(routeResult.route.interface)
+            ? routeResult.route.interface
+            : physicalRoute?.interface,
+        ),
+        this.probeVpnPath(routeResult.route?.interface),
+        this.probeHttp(
+          "server",
+          `Удалённый сервер (${endpointName(this.remoteEndpoint)})`,
+          this.remoteEndpoint,
+        ),
+        this.probeVpn(routeResult.route),
+      ]);
 
     const internet = { ...internetHttp, ...internetPing };
 
     return {
       gateway,
       internet,
+      directPath,
+      vpnPath,
       server,
       vpn,
       speed: makeProbe(
@@ -381,7 +429,7 @@ export class MacNetworkPingProvider implements PingProvider {
     route: DefaultRoute | undefined,
     reason: "command-failed" | "not-found",
   ): Promise<PingProbeResult> {
-    if (!route) {
+    if (!route?.gateway) {
       return makeProbe(
         "gateway",
         "Роутер",
@@ -451,6 +499,107 @@ export class MacNetworkPingProvider implements PingProvider {
       return parsePingStatistics(result.stdout);
     } catch {
       return {};
+    }
+  }
+
+  private async probeDirectPath(
+    networkInterface: string | undefined,
+  ): Promise<PingProbeResult> {
+    if (!networkInterface) {
+      return makeProbe(
+        "direct-path",
+        "Мимо VPN",
+        "unknown",
+        "Не удалось определить физический интерфейс Wi-Fi или Ethernet.",
+      );
+    }
+
+    return this.probeHttpOnInterface(
+      "direct-path",
+      `Мимо VPN (${networkInterface})`,
+      networkInterface,
+    );
+  }
+
+  private async probeVpnPath(
+    networkInterface: string | undefined,
+  ): Promise<PingProbeResult> {
+    if (!networkInterface || !/^utun\d+$/iu.test(networkInterface)) {
+      return makeProbe(
+        "vpn-path",
+        "Через VPN",
+        "not-detected",
+        "VPN не является текущим маршрутом по умолчанию.",
+      );
+    }
+
+    return this.probeHttpOnInterface(
+      "vpn-path",
+      `Через VPN (${networkInterface})`,
+      networkInterface,
+    );
+  }
+
+  private async probeHttpOnInterface(
+    id: "direct-path" | "vpn-path",
+    label: string,
+    networkInterface: string,
+  ): Promise<PingProbeResult> {
+    const target = endpointName(this.internetEndpoint);
+    try {
+      const result = await this.executor(
+        CURL_COMMAND,
+        [
+          "--interface",
+          `if!${networkInterface}`,
+          "--connect-timeout",
+          "5",
+          "--max-time",
+          "7",
+          "--silent",
+          "--show-error",
+          "--output",
+          "/dev/null",
+          "--write-out",
+          "\\n%{http_code}|%{time_total}|%{remote_ip}\\n",
+          this.internetEndpoint,
+        ],
+        { timeout: 8_000 },
+      );
+      const http = parseInterfaceHttpResult(result.stdout);
+      if (!http) {
+        return makeProbe(id, label, "fail", "Запрос не дал HTTP-ответа.", {
+          target,
+        });
+      }
+
+      if (http.status !== 204) {
+        return makeProbe(
+          id,
+          label,
+          "fail",
+          `Ожидался HTTP 204, получен HTTP ${http.status}.`,
+          { latencyMs: http.latencyMs, target: http.remoteIp ?? target },
+        );
+      }
+
+      return makeProbe(
+        id,
+        label,
+        "pass",
+        `HTTP 204 через ${networkInterface}.`,
+        { latencyMs: http.latencyMs, target: http.remoteIp ?? target },
+      );
+    } catch (error) {
+      return makeProbe(
+        id,
+        label,
+        "fail",
+        errorLooksLikeTimeout(error)
+          ? "Время ожидания запроса истекло."
+          : "Запрос не дал HTTP-ответа.",
+        { target },
+      );
     }
   }
 

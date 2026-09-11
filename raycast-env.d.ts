@@ -25,6 +25,7 @@ declare namespace Preferences {
   "remoteEndpoint": string
 }
 }
+
 declare namespace Arguments {
   /** Arguments passed to the `translate` command */
   export type Translate = {}

@@ -1,4 +1,11 @@
-export type PingProbeId = "gateway" | "internet" | "server" | "vpn" | "speed";
+export type PingProbeId =
+  | "gateway"
+  | "internet"
+  | "direct-path"
+  | "vpn-path"
+  | "server"
+  | "vpn"
+  | "speed";
 
 export type ProbeState = "pass" | "fail" | "unknown" | "not-detected";
 
@@ -18,6 +25,8 @@ export interface PingProbeResult {
 export interface PingProbeSet {
   gateway: PingProbeResult;
   internet: PingProbeResult;
+  directPath: PingProbeResult;
+  vpnPath: PingProbeResult;
   server: PingProbeResult;
   vpn: PingProbeResult;
   speed: PingProbeResult;

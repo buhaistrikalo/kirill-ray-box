@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   GoogleTranslateProvider,
   parseGoogleTranslateResponse,
+  parseMyMemoryTranslateResponse,
 } from "./provider";
 
 const russianResponse = {
@@ -35,6 +36,35 @@ describe("Google translation provider", () => {
     });
     expect(requests[0]?.url).toContain("sl=auto");
     expect(requests[0]?.url).toContain("tl=en");
+  });
+
+  it("falls back when Google rate-limits a request", async () => {
+    const requests: string[] = [];
+    const fetcher: typeof fetch = async (input) => {
+      requests.push(String(input));
+      if (requests.length === 1) {
+        return new Response(null, { status: 429 });
+      }
+
+      return new Response(
+        JSON.stringify({ responseData: { translatedText: "Hello" } }),
+        { status: 200 },
+      );
+    };
+
+    await expect(
+      new GoogleTranslateProvider(fetcher).translate("Привет"),
+    ).resolves.toMatchObject({ text: "Hello", provider: "mymemory" });
+    expect(requests[1]).toContain("api.mymemory.translated.net");
+    expect(requests[1]).toContain("langpair=ru%7Cen");
+  });
+
+  it("parses the fallback response", () => {
+    expect(
+      parseMyMemoryTranslateResponse({
+        responseData: { translatedText: "Hello" },
+      }),
+    ).toEqual({ text: "Hello" });
   });
 
   it("exposes a readable error when the endpoint fails", async () => {

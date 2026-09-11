@@ -17,6 +17,18 @@ const probes: PingProbeSet = {
     detail: "HTTP 204",
     latencyMs: 12,
   },
+  directPath: {
+    id: "direct-path",
+    label: "Мимо VPN (en0)",
+    state: "pass",
+    detail: "HTTP 204 через en0.",
+  },
+  vpnPath: {
+    id: "vpn-path",
+    label: "Через VPN",
+    state: "not-detected",
+    detail: "VPN не является текущим маршрутом по умолчанию.",
+  },
   server: {
     id: "server",
     label: "Удалённый сервер",

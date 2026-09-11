@@ -7,6 +7,7 @@ import type { TranslationProvider, TranslationResult } from "./types";
 
 const GOOGLE_TRANSLATE_ENDPOINT =
   "https://translate.googleapis.com/translate_a/single";
+const MYMEMORY_TRANSLATE_ENDPOINT = "https://api.mymemory.translated.net/get";
 const TRANSLATION_TIMEOUT_MS = 15_000;
 
 type GoogleSentence = {
@@ -16,6 +17,10 @@ type GoogleSentence = {
 type ParsedGoogleResponse = {
   text: string;
   detectedLanguage?: SupportedLanguage;
+};
+
+type ParsedMyMemoryResponse = {
+  text: string;
 };
 
 function asSupportedLanguage(value: unknown): SupportedLanguage | undefined {
@@ -62,10 +67,29 @@ export function parseGoogleTranslateResponse(
   throw new Error("Translation service returned an empty response");
 }
 
+export function parseMyMemoryTranslateResponse(
+  payload: unknown,
+): ParsedMyMemoryResponse {
+  if (
+    typeof payload === "object" &&
+    payload !== null &&
+    !Array.isArray(payload)
+  ) {
+    const response = payload as { responseData?: { translatedText?: unknown } };
+    const text = response.responseData?.translatedText;
+    if (typeof text === "string" && text.length > 0) {
+      return { text };
+    }
+  }
+
+  throw new Error("Translation service returned an empty response");
+}
+
 export class GoogleTranslateProvider implements TranslationProvider {
   constructor(
     private readonly fetcher: typeof fetch = fetch,
     private readonly endpoint = GOOGLE_TRANSLATE_ENDPOINT,
+    private readonly fallbackEndpoint = MYMEMORY_TRANSLATE_ENDPOINT,
   ) {}
 
   async translate(text: string): Promise<TranslationResult> {
@@ -99,6 +123,53 @@ export class GoogleTranslateProvider implements TranslationProvider {
         }
 
         throw new Error("Unable to reach translation service");
+      }
+
+      if (response.status === 429) {
+        const fallbackUrl = new URL(this.fallbackEndpoint);
+        fallbackUrl.searchParams.set("q", text);
+        fallbackUrl.searchParams.set(
+          "langpair",
+          `${localSourceLanguage}|${targetLanguage}`,
+        );
+
+        try {
+          response = await this.fetcher(fallbackUrl.toString(), {
+            headers: { Accept: "application/json" },
+            signal: controller.signal,
+          });
+        } catch {
+          if (controller.signal.aborted) {
+            throw new Error("Translation service request timed out");
+          }
+
+          throw new Error("Unable to reach translation service");
+        }
+
+        if (!response.ok) {
+          throw new Error(
+            `Translation service returned HTTP ${response.status}`,
+          );
+        }
+
+        let fallbackPayload: unknown;
+        try {
+          fallbackPayload = await response.json();
+        } catch {
+          if (controller.signal.aborted) {
+            throw new Error("Translation service request timed out");
+          }
+
+          throw new Error("Translation service returned invalid JSON");
+        }
+
+        const parsed = parseMyMemoryTranslateResponse(fallbackPayload);
+        return {
+          text: parsed.text,
+          sourceLanguage: localSourceLanguage,
+          targetLanguage,
+          provider: "mymemory",
+        };
       }
 
       if (!response.ok) {

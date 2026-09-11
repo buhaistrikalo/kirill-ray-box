@@ -24,6 +24,8 @@ function probes(
   return {
     gateway: probe("gateway", gateway),
     internet: probe("internet", internet),
+    directPath: probe("direct-path", "pass"),
+    vpnPath: probe("vpn-path", vpn),
     server: probe("server", server),
     vpn: probe("vpn", vpn),
     speed: probe("speed", "pass"),
@@ -55,8 +57,34 @@ describe("Ping diagnosis", () => {
   });
 
   it("points to the VPN when it is active during an internet failure", () => {
-    expect(diagnosePing(probes("pass", "fail", "fail", "pass"))).toMatchObject({
+    const result = probes("pass", "fail", "fail", "pass");
+    result.directPath.state = "unknown";
+    result.vpnPath.state = "unknown";
+
+    expect(diagnosePing(result)).toMatchObject({
       code: "vpn",
+    });
+  });
+
+  it("shows when only the VPN path is broken", () => {
+    const result = probes("pass", "fail", "fail", "pass");
+    result.directPath.state = "pass";
+    result.vpnPath.state = "fail";
+
+    expect(diagnosePing(result)).toMatchObject({
+      code: "vpn",
+      title: "Проблема в VPN",
+    });
+  });
+
+  it("does not blame the VPN when both forced paths work", () => {
+    const result = probes("pass", "fail", "fail", "pass");
+    result.directPath.state = "pass";
+    result.vpnPath.state = "pass";
+
+    expect(diagnosePing(result)).toMatchObject({
+      code: "inconclusive",
+      title: "Сбой проверки по умолчанию",
     });
   });
 

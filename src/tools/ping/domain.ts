@@ -19,7 +19,7 @@ export function getProbeStateLabel(state: ProbeState): string {
 }
 
 export function diagnosePing(probes: PingProbeSet): PingDiagnosis {
-  const { gateway, internet, server, vpn } = probes;
+  const { gateway, internet, directPath, vpnPath, server, vpn } = probes;
   const localPathConfirmedByVpn =
     gateway.state === "unknown" && vpn.state === "pass";
 
@@ -71,6 +71,33 @@ export function diagnosePing(probes: PingProbeSet): PingDiagnosis {
   }
 
   if (internet.state === "fail") {
+    if (vpnPath.state === "fail" && directPath.state === "pass") {
+      return {
+        code: "vpn",
+        title: "Проблема в VPN",
+        summary:
+          "Запрос через VPN не прошёл, а напрямую через Wi-Fi или Ethernet интернет доступен.",
+      };
+    }
+
+    if (vpnPath.state === "pass" && directPath.state === "fail") {
+      return {
+        code: "vpn",
+        title: "Работает только через VPN",
+        summary:
+          "Запрос через VPN проходит, а напрямую через Wi-Fi или Ethernet — нет.",
+      };
+    }
+
+    if (vpnPath.state === "pass" && directPath.state === "pass") {
+      return {
+        code: "inconclusive",
+        title: "Сбой проверки по умолчанию",
+        summary:
+          "Запросы через VPN и напрямую проходят; проблема может быть в DNS или в приложении, которое использует интернет.",
+      };
+    }
+
     if (vpn.state === "pass") {
       return {
         code: "vpn",

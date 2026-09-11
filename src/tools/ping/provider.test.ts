@@ -7,6 +7,7 @@ import {
   parseDefaultRoute,
   parseDhcpRouter,
   parseHardwarePortDevices,
+  parseInterfaceHttpResult,
   parseNetworkQuality,
   parsePingLatency,
   parsePingStatistics,
@@ -23,9 +24,9 @@ describe("macOS network output parsers", () => {
       `),
     ).toEqual({ gateway: "192.168.1.1", interface: "en0" });
 
-    expect(
-      parseDefaultRoute("gateway: link#12\ninterface: en0"),
-    ).toBeUndefined();
+    expect(parseDefaultRoute("gateway: link#12\ninterface: en0")).toEqual({
+      interface: "en0",
+    });
 
     expect(
       parseHardwarePortDevices(
@@ -83,6 +84,20 @@ describe("macOS network output parsers", () => {
     );
   });
 
+  it("parses the bounded curl result used for interface-specific checks", () => {
+    expect(parseInterfaceHttpResult("\n204|0.381|142.251.142.227\n")).toEqual({
+      status: 204,
+      latencyMs: 381,
+      remoteIp: "142.251.142.227",
+    });
+    expect(parseInterfaceHttpResult("curl: timeout\n000|0.000|\n")).toEqual({
+      status: 0,
+      latencyMs: 0,
+      remoteIp: undefined,
+    });
+    expect(parseInterfaceHttpResult("not a curl result")).toBeUndefined();
+  });
+
   it("parses download speed and measured interface from networkQuality JSON", () => {
     expect(
       parseNetworkQuality(
@@ -127,6 +142,9 @@ describe("MacNetworkPingProvider", () => {
             "round-trip min/avg/max/stddev = 1.0/2.5/4.0/1.0 ms\n",
         };
       }
+      if (command === "/usr/bin/curl") {
+        return { stdout: "\n204|0.100|142.251.142.227\n" };
+      }
       return { stdout: "* (Disconnected) Work VPN\n" };
     };
     const fetcher: typeof fetch = async (input, init) =>
@@ -147,10 +165,26 @@ describe("MacNetworkPingProvider", () => {
       target: "192.168.1.1",
       detail: "Роутер отвечает нормально.",
     });
+    expect(result.directPath).toMatchObject({
+      state: "pass",
+      label: "Мимо VPN (en0)",
+    });
+    expect(result.vpnPath).toMatchObject({
+      state: "pass",
+      label: "Через VPN (utun6)",
+    });
     expect(commands).toEqual(
       expect.arrayContaining([
         { command: "/usr/sbin/networksetup", args: ["-listallhardwareports"] },
         { command: "/usr/sbin/ipconfig", args: ["getpacket", "en0"] },
+        expect.objectContaining({
+          command: "/usr/bin/curl",
+          args: expect.arrayContaining(["--interface", "if!en0"]),
+        }),
+        expect.objectContaining({
+          command: "/usr/bin/curl",
+          args: expect.arrayContaining(["--interface", "if!utun6"]),
+        }),
       ]),
     );
   });
@@ -171,6 +205,9 @@ describe("MacNetworkPingProvider", () => {
             "5 packets transmitted, 5 packets received, 0.0% packet loss\n" +
             "round-trip min/avg/max/stddev = 1.0/2.5/4.0/1.0 ms\n",
         };
+      }
+      if (command === "/usr/bin/curl") {
+        return { stdout: "\n204|0.100|142.251.142.227\n" };
       }
       if (command === "/usr/bin/networkQuality") {
         return {
@@ -212,6 +249,11 @@ describe("MacNetworkPingProvider", () => {
       target: "status.example.test",
     });
     expect(result.vpn.state).toBe("not-detected");
+    expect(result.directPath).toMatchObject({
+      state: "pass",
+      target: "142.251.142.227",
+    });
+    expect(result.vpnPath.state).toBe("not-detected");
     expect(result.speed).toMatchObject({ state: "not-detected" });
     expect(commands.map(({ command }) => command)).toEqual(
       expect.arrayContaining(["/sbin/route", "/sbin/ping", "/usr/sbin/scutil"]),
@@ -260,6 +302,9 @@ describe("MacNetworkPingProvider", () => {
         }
         if (command === "/sbin/ping") {
           return { stdout: "time=1 ms" };
+        }
+        if (command === "/usr/bin/curl") {
+          return { stdout: "\n204|0.100|142.251.142.227\n" };
         }
         return { stdout: "" };
       };
